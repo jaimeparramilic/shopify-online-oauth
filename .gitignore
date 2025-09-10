@@ -1,0 +1,12 @@
+# Node
+node_modules
+npm-debug.log*
+yarn.lock
+.pnpm-store
+# Env
+.env
+.env.*
+# Misc
+.DS_Store
+.idea
+.vscode
