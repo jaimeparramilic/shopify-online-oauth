@@ -1514,6 +1514,115 @@ app.post('/tools/orders/fulfill-unfulfilled', async (req, res) => {
   }
 });
 
+// =================== WHATSAPP FLOW ACTIONS API ===================
+// Este endpoint es llamado por nuestro otro servicio (whatsapp-odds)
+
+// Helper para obtener la sesión OFFLINE (para acciones server-to-server)
+async function getOfflineSession(shop) {
+  // Asegúrate de tener la variable DEFAULT_SHOP en las variables de entorno de esta app
+  const shopName = shop || process.env.DEFAULT_SHOP;
+  if (!shopName) throw new Error('DEFAULT_SHOP environment variable is not set.');
+
+  const offlineId = shopify.session.getOfflineId(shopName);
+  const session = await shopify.config.sessionStorage.loadSession(offlineId);
+
+  if (!session) {
+    // Si esta sesión no existe, debes generarla primero visitando:
+    // https://[tu-app-url]/shopify/auth/offline?shop=[tu-tienda].myshopify.com
+    const hint = `/shopify/auth/offline?shop=${encodeURIComponent(shopName)}`;
+    const e = new Error(`No offline session for ${shopName}. Install via: ${hint}`);
+    e.status = 428; // Precondition Required
+    throw e;
+  }
+  return session;
+}
+
+// Helper para buscar un variant_id por SKU
+async function findVariantIdBySku(session, sku) {
+  if (!sku) return null;
+  const gql = new shopify.clients.Graphql({ session });
+  const data = await gql.query({
+    data: {
+      query: `query FindVariant($q:String!){
+        productVariants(first:1, query:$q){ edges{ node{ id } } }
+      }`,
+      variables: { q: `sku:${sku}` }
+    }
+  });
+  return data?.body?.data?.productVariants?.edges?.[0]?.node?.id || null;
+}
+
+app.post('/api/flow-actions', async (req, res) => {
+  // 1. Seguridad: Solo nuestro otro servicio puede llamar a este endpoint
+  const internalApiKey = req.get('X-Internal-Api-Key') || '';
+  // Asegúrate de tener INTERNAL_API_KEY en las variables de entorno de esta app
+  if (!process.env.INTERNAL_API_KEY || internalApiKey !== process.env.INTERNAL_API_KEY) {
+    return res.status(401).json({ success: false, error: 'Unauthorized: Invalid Internal API Key' });
+  }
+
+  try {
+    const session = await getOfflineSession(); // Usamos la sesión offline
+    const { action, params = {} } = req.body || {};
+    let data = {};
+
+    if (action === 'list_products') {
+        const gql = new shopify.clients.Graphql({ session });
+        const gqlResponse = await gql.query({
+            data: {
+                query: `query Products($first:Int!, $q:String){
+                    products(first:$first, query:$q, sortKey:CREATED_AT, reverse:true){
+                        edges{ node{
+                            id title
+                            variants(first:1){ edges{ node{ id sku price } } }
+                        }}
+                    }
+                }`,
+                variables: { first: 10, q: params.query ? `title:${params.query}*` : null }
+            }
+        });
+        const edges = gqlResponse?.body?.data?.products?.edges || [];
+        data.products = edges.map(e => {
+            const v = e.node?.variants?.edges?.[0]?.node || {};
+            const p = v.price ? ` · $${Number(v.price).toLocaleString("es-CO")}` : "";
+            const id = v.sku || String(v.id || e.node.id).split('/').pop();
+            return { id: String(id), title: `${e.node.title}${p}` };
+        });
+
+    } else if (action === 'create_checkout') {
+        const rest = new shopify.clients.Rest({ session });
+        const line_items = [];
+        for (const v of (params.variants || [])) {
+            const variantId = await findVariantIdBySku(session, v.sku);
+            if (variantId) {
+                line_items.push({ variant_id: variantId.split('/').pop(), quantity: v.qty || 1 });
+            } else {
+                line_items.push({ title: v.sku, price: v.price || '0.00', quantity: v.qty || 1 });
+            }
+        }
+        
+        const payload = {
+            draft_order: {
+                line_items,
+                shipping_address: params.shipping,
+                use_customer_default_address: false,
+            }
+        };
+
+        const response = await rest.post({ path: "draft_orders", data: payload, type: "json" });
+        data.checkout_url = response?.body?.draft_order?.invoice_url;
+
+    } else {
+        return res.status(400).json({ success: false, error: 'Unknown action' });
+    }
+
+    res.json({ success: true, data });
+  } catch (e) {
+    console.error('[ERROR] /api/flow-actions failed:', e);
+    res.status(e.status || 500).json({ success: false, error: e.message || 'Server Error' });
+  }
+});
+
+// =================== FIN WHATSAPP FLOW ACTIONS API ===================
 
 // ===== Home =====
 app.get('/', (_req, res) => res.send('Shopify OAuth (online) ready'));
