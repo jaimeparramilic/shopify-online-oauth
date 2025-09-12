@@ -1665,6 +1665,49 @@ app.get('/shopify/auth/offline/callback', async (req, res) => {
 
 // =================== FIN AUTH OFFLINE ===================
 
+// =================== ENDPOINT DE PRUEBA (NUEVO) ===================
+// Una ruta GET simple para probar la lógica del flow desde el navegador
+
+app.get('/api/test-flow', async (req, res) => {
+  try {
+    console.log('[TEST-FLOW] Iniciando prueba...');
+    
+    // 1. Intenta obtener la sesión offline (la parte que fallaba)
+    const session = await getOfflineSession(); // Usamos el helper que ya estaba en el código de /api/flow-actions
+    console.log('[TEST-FLOW] Sesión offline cargada para:', session.shop);
+
+    // 2. Intenta listar productos (la misma lógica del curl)
+    const gql = new shopify.clients.Graphql({ session });
+    const gqlResponse = await gql.query({
+      data: {
+        query: `query Products($first:Int!){ products(first:$first){ edges{ node{ id title } } } }`,
+        variables: { first: 5 }
+      }
+    });
+    console.log('[TEST-FLOW] Productos obtenidos de Shopify.');
+    
+    const products = gqlResponse?.body?.data?.products?.edges || [];
+
+    // 3. Devuelve el resultado
+    res.json({
+      success: true,
+      message: 'La prueba fue exitosa. La sesión offline y la conexión con la API de Shopify funcionan.',
+      product_count: products.length,
+      products: products.map(e => e.node),
+    });
+
+  } catch (e) {
+    console.error('[TEST-FLOW] La prueba falló:', e);
+    res.status(500).json({
+      success: false,
+      error: 'La prueba falló.',
+      message: e.message
+    });
+  }
+});
+
+// =================== FIN ENDPOINT DE PRUEBA ===================
+
 // ===== Home =====
 app.get('/', (_req, res) => res.send('Shopify OAuth (online) ready'));
 
