@@ -3,17 +3,20 @@ name: Deploy Docker → Cloud Run (main)
 on:
   push:
     branches: [ "main" ]
+  workflow_dispatch: {}
 
 permissions:
-  id-token: write
+  id-token: write      # necesario para OIDC (WIF)
   contents: read
 
-# Variables base (simples, sin expresiones)
+# ⚙️ Ajusta solo estas variables:
 env:
   PROJECT_ID: bubbly-vine-471620-h1
   REGION: us-central1
-  SERVICE: shopify-app-10289619147
-  REPO: cloud-run   # nombre del repositorio en Artifact Registry
+  SERVICE: shopify-app-10289619147        # nombre EXACTO del servicio ya público
+  ARTIFACT_REPO: cloud-run                # repo de Artifact Registry (Docker)
+  # Provider OIDC ya creado en tu pool gh-pool (usa tu projectNumber 10289619147)
+  WIF_PROVIDER: projects/10289619147/locations/global/workloadIdentityPools/gh-pool/providers/gh-provider-shopify
 
 jobs:
   deploy:
@@ -22,40 +25,41 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # Autenticación OIDC (Workload Identity Federation)
+      # 🔐 Autenticación sin llaves con Workload Identity Federation (OIDC)
       - name: Auth to Google Cloud
         uses: google-github-actions/auth@v3
         with:
           project_id: ${{ env.PROJECT_ID }}
-          workload_identity_provider: ${{ secrets.WIF_PROVIDER }} # ej.: projects/123456789/locations/global/workloadIdentityPools/github/providers/github-provider
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
           service_account: ci-deployer@${{ env.PROJECT_ID }}.iam.gserviceaccount.com
 
       - name: Setup gcloud
         uses: google-github-actions/setup-gcloud@v2
 
-      # (Opcional pero recomendado) crear el repo de Artifact Registry si no existe
+      # 🗃️ Crea el repositorio de Artifact Registry si no existe
       - name: Ensure Artifact Registry repo exists
         run: |
-          gcloud artifacts repositories describe "$REPO" --location "$REGION" \
-          || gcloud artifacts repositories create "$REPO" \
+          gcloud artifacts repositories describe "$ARTIFACT_REPO" --location "$REGION" \
+          || gcloud artifacts repositories create "$ARTIFACT_REPO" \
                --repository-format=Docker \
                --location="$REGION" \
                --description="Images for Cloud Run"
 
-      # Calcula IMAGE aquí y expórtala al entorno del job
+      # 🧮 Calcula el nombre de la imagen (no uses env-expansions en 'env:' arriba)
       - name: Compute IMAGE name
         run: |
-          echo "IMAGE=${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPO }}/${{ env.SERVICE }}:${{ github.sha }}" >> $GITHUB_ENV
+          echo "IMAGE=${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.ARTIFACT_REPO }}/${{ env.SERVICE }}:${{ github.sha }}" >> $GITHUB_ENV
 
-      # Build & push usando tu Dockerfile
+      # 🏗️ Build & Push con Cloud Build (usa tu Dockerfile)
       - name: Build & Push (Cloud Build)
         run: |
           gcloud builds submit --tag "${IMAGE}"
 
-      # Deploy a la MISMA URL/servicio
+      # 🚀 Deploy al MISMO servicio/endpoint (no toca IAM ni lo público)
       - name: Deploy to Cloud Run
         run: |
           gcloud run deploy "$SERVICE" \
+            --project "$PROJECT_ID" \
             --region "$REGION" \
             --image "${IMAGE}" \
             --quiet \
@@ -68,7 +72,7 @@ jobs:
               GOOGLE_SHEETS_SPREADSHEET_ID=google_sheets_spreadsheet_id:latest,\
               NODE_ENV=node_env:latest
 
-      - name: Show URL
+      - name: Show Service URL
         run: |
           gcloud run services describe "$SERVICE" \
             --region "$REGION" \
