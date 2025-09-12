@@ -14,6 +14,11 @@ import PQueue from 'p-queue';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
+// ▼▼▼ AÑADE ESTA LÍNEA ▼▼▼
+console.log('--- DIAGNÓSTICO DE VARIABLES ---', { SHOPIFY_API_KEY: process.env.SHOPIFY_API_KEY, SHOPIFY_API_SECRET: !!process.env.SHOPIFY_API_SECRET });
+
+
+
 // helpers para __dirname en ES modules
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
