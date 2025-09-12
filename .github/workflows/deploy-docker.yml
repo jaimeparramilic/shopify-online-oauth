@@ -1,0 +1,53 @@
+name: Deploy Docker → Cloud Run (main)
+on:
+  push:
+    branches: [ "main" ]
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  PROJECT_ID: bubbly-vine-471620-h1
+  REGION: us-central1
+  SERVICE: shopify-app-10289619147
+  REPO: cloud-run
+  IMAGE: ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPO }}/${{ env.SERVICE }}:${{ github.sha }}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Autenticación sin llaves (Workload Identity Federation)
+      - uses: google-github-actions/auth@v3
+        with:
+          project_id: ${{ env.PROJECT_ID }}
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ci-deployer@${{ env.PROJECT_ID }}.iam.gserviceaccount.com
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      # Build & push a Artifact Registry usando tu Dockerfile
+      - name: Build & Push (Cloud Build)
+        run: gcloud builds submit --tag "${IMAGE}"
+
+      # Deploy a la MISMA URL/servicio
+      - name: Deploy to Cloud Run
+        run: |
+          gcloud run deploy "$SERVICE" \
+            --region "$REGION" \
+            --image "${IMAGE}" \
+            --quiet \
+            --update-secrets \
+              SHOPIFY_API_KEY=shopify_api_key:latest,\
+              SHOPIFY_API_SECRET=shopify_api_secret:latest,\
+              SHOPIFY_SCOPES=shopify_scopes:latest,\
+              SHOPIFY_API_VERSION=shopify_api_version:latest,\
+              SHOPIFY_APP_HOST=shopify_app_host:latest,\
+              GOOGLE_SHEETS_SPREADSHEET_ID=google_sheets_spreadsheet_id:latest,\
+              NODE_ENV=node_env:latest
+
+      - name: Show URL
+        run: gcloud run services describe "$SERVICE" --region "$REGION" --format='value(status.url)'
