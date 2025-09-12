@@ -1624,6 +1624,47 @@ app.post('/api/flow-actions', async (req, res) => {
 
 // =================== FIN WHATSAPP FLOW ACTIONS API ===================
 
+// =================== AUTH OFFLINE (NUEVO) ===================
+// Estas son las rutas que faltaban para crear la sesión server-to-server
+
+app.get('/shopify/auth/offline', async (req, res) => {
+  try {
+    const shop = String(req.query.shop || process.env.DEFAULT_SHOP || '');
+    if (!isValidShop(shop)) {
+      return res.status(400).send('Missing or invalid ?shop=xxx.myshopify.com');
+    }
+    console.log('[OAUTH OFFLINE BEGIN]', { shop });
+    await shopify.auth.begin({
+      shop,
+      callbackPath: '/shopify/auth/offline/callback',
+      isOnline: false, // <-- false es para sesiones offline
+      rawRequest: req,
+      rawResponse: res,
+    });
+  } catch(e) {
+    console.error('OFFLINE AUTH BEGIN ERROR:', e);
+    res.status(500).send('Offline auth start failed: ' + (e?.message || e));
+  }
+});
+
+app.get('/shopify/auth/offline/callback', async (req, res) => {
+  try {
+    const { session } = await shopify.auth.callback({
+      rawRequest: req,
+      rawResponse: res,
+    });
+    // Guardamos la sesión offline en nuestra base de datos
+    await shopify.config.sessionStorage.storeSession(session);
+    console.log('[OAUTH OFFLINE SUCCESS]', { shop: session.shop });
+    res.status(200).send(`<h1>✅ Sesión Offline Creada</h1><p>Token guardado para ${session.shop}. Ya puedes usar las acciones del flow.</p>`);
+  } catch (e) {
+    console.error('OFFLINE AUTH CALLBACK ERROR:', e);
+    res.status(400).send('Offline auth callback failed: ' + (e?.message || e));
+  }
+});
+
+// =================== FIN AUTH OFFLINE ===================
+
 // ===== Home =====
 app.get('/', (_req, res) => res.send('Shopify OAuth (online) ready'));
 
