@@ -1,21 +1,17 @@
-# Imagen base Node 20
-FROM node:20-alpine
-
-# 1) Directorio de trabajo dentro del contenedor
+# Etapa de build: compila módulos nativos (better-sqlite3)
+FROM node:20-alpine AS build
 WORKDIR /app
-
-# 2) Instala deps con caché eficiente
 COPY package*.json ./
-RUN npm ci --omit=dev
+RUN apk add --no-cache python3 make g++ \
+ && npm ci --omit=dev
 
-# 3) Copia el resto del código
+# Etapa final (runtime) mínima
+FROM node:20-alpine
+WORKDIR /app
+ENV NODE_ENV=production PORT=8080
 COPY . .
-
-# 4) Variables/puerto
-ENV NODE_ENV=production
+COPY --from=build /app/node_modules ./node_modules
 EXPOSE 8080
+CMD ["node","src/server.js"]
 
-
-# 5) Arranque (ruta relativa al WORKDIR)
-CMD ["node", "src/server.js"]
 
