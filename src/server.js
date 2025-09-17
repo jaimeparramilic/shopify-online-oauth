@@ -34,6 +34,35 @@ app.set('trust proxy', true); // necesario detrás de túneles/proxies (Cloudfla
 app.use(express.json({ limit: '20mb' }));
 app.use(cookieParser());
 
+// --- Canonical host seguro para Cloud Run ---
+const EXPECTED_HOST = (() => {
+  try { return new URL(process.env.SHOPIFY_APP_HOST || '').host; } catch { return ''; }
+})();
+
+app.use((req, res, next) => {
+  const h = String(req.headers.host || '');
+
+  // nunca redirigir health/diag/oauth ni hosts internos de Cloud Run
+  if (
+    req.path === '/healthz' ||
+    req.path.startsWith('/diag') ||
+    req.path.startsWith('/shopify/auth') ||
+    !EXPECTED_HOST ||
+    h === EXPECTED_HOST ||
+    h.endsWith('.a.run.app')
+  ) return next();
+
+  if (req.method !== 'GET' && req.method !== 'HEAD') return next();
+
+  const base = (process.env.SHOPIFY_APP_HOST || '').replace(/\/+$/, '');
+  return base ? res.redirect(302, `${base}${req.originalUrl}`) : next();
+});
+
+// Log de errores tempranos para ver fallas de arranque en Cloud Run
+process.on('unhandledRejection', (e) => { console.error('[unhandledRejection]', e); });
+process.on('uncaughtException', (e) => { console.error('[uncaughtException]', e); });
+
+
 // Sirve todo lo que pongas en /public (CSS, imágenes, etc.)
 app.use(express.static(path.join(__dirname, '../public')));
 // Alias cómodo para /public/assets → /assets
