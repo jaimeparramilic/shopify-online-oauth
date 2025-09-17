@@ -1877,5 +1877,7 @@ app.get('/api/test-flow', async (req, res) => {
 // ===== Home =====
 app.get('/', (_req, res) => res.send('Shopify OAuth (online) ready'));
 
-const port = process.env.PORT || 8080;
-app.listen(port, () => console.log(`Server listening on ${port}`));
+if (process.env.DIRECT_LISTEN === "1") {
+  const PORT = process.env.PORT || 8080;
+  app.listen(PORT, "0.0.0.0", () => console.log(`[server] listening on ${PORT}`));
+}
