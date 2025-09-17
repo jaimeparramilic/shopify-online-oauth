@@ -14,6 +14,11 @@ import PQueue from 'p-queue';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
+// ▼▼▼ AÑADE ESTA LÍNEA ▼▼▼
+console.log('--- DIAGNÓSTICO DE VARIABLES ---', { SHOPIFY_API_KEY: process.env.SHOPIFY_API_KEY, SHOPIFY_API_SECRET: !!process.env.SHOPIFY_API_SECRET });
+
+
+
 // helpers para __dirname en ES modules
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -1513,6 +1518,138 @@ app.post('/tools/orders/fulfill-unfulfilled', async (req, res) => {
     res.status(500).json({ ok: false, error: err?.message || String(err) });
   }
 });
+
+// ======== CERT-API (nuevo) ========
+
+// Tokens de autorización (usa el de Flows o, en su defecto, INTERNAL_API_KEY)
+const FLOW_TOKEN = (process.env.FLOW_TOKEN || '').trim();
+const INTERNAL_API_KEY = (process.env.INTERNAL_API_KEY || '').trim();
+
+// Middleware: requiere token vía Authorization: Bearer, X-Flow-Token, X-Internal-Api-Key o ?token=
+function requireFlowToken(req, res, next) {
+  const bearer = (req.get('Authorization') || '').replace(/^Bearer\s+/i, '').trim();
+  const xflow  = (req.get('X-Flow-Token') || '').trim();
+  const xint   = (req.get('X-Internal-Api-Key') || '').trim();
+  const qtoken = String(req.query.token || '').trim();
+
+  const provided = bearer || xflow || qtoken || xint;
+
+  if (!FLOW_TOKEN && !INTERNAL_API_KEY) {
+    return res.status(500).json({ ok: false, error: 'Cert-API sin FLOW_TOKEN/INTERNAL_API_KEY' });
+  }
+  const ok =
+    (FLOW_TOKEN && provided === FLOW_TOKEN) ||
+    (INTERNAL_API_KEY && provided === INTERNAL_API_KEY);
+
+  if (!ok) return res.status(401).json({ ok: false, error: 'Unauthorized (token inválido)' });
+  next();
+}
+
+// Ping simple
+app.get('/cert-api/ping', requireFlowToken, (_req, res) => {
+  res.json({ ok: true, service: 'cert-api', shop: process.env.DEFAULT_SHOP || null });
+});
+
+// GET /cert-api/order?order_name=#1234&shop=xxx.myshopify.com
+// Devuelve datos básicos + items con imagen (para certificados)
+app.get('/cert-api/order', requireFlowToken, async (req, res) => {
+  try {
+    const shop = String(req.query.shop || process.env.DEFAULT_SHOP || '').trim();
+    if (!isValidShop(shop)) return res.status(400).json({ ok: false, error: 'Missing or invalid shop' });
+
+    let orderName = String(req.query.order_name || '').trim();
+    if (!orderName) return res.status(400).json({ ok: false, error: 'Missing order_name' });
+    if (!orderName.startsWith('#')) orderName = `#${orderName}`;
+
+    // usa tu helper existente
+    const session = await getOfflineSession(shop);
+
+    const gql = new shopify.clients.Graphql({ session });
+    const data = await gql.query({
+      data: {
+        query: `
+          query OrderByName($q:String!) {
+            orders(first:1, query:$q, sortKey:CREATED_AT, reverse:true) {
+              edges {
+                node {
+                  id
+                  name
+                  createdAt
+                  displayFinancialStatus
+                  test
+                  customer { id displayName email phone }
+                  shippingAddress { name address1 city province country zip }
+                  lineItems(first: 50) {
+                    edges {
+                      node {
+                        id
+                        title
+                        sku
+                        quantity
+                        variant {
+                          id
+                          title
+                          sku
+                          image { url originalSrc }
+                          product { title featuredImage { url originalSrc } }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }`,
+        variables: { q: `name:${orderName}` },
+      },
+    });
+
+    const edge = data?.body?.data?.orders?.edges?.[0];
+    if (!edge) return res.status(404).json({ ok: false, error: 'Order not found' });
+
+    const o = edge.node;
+    const items = (o?.lineItems?.edges || []).map(({ node }) => {
+      const v = node?.variant || {};
+      const img =
+        v?.image?.url ||
+        v?.image?.originalSrc ||
+        v?.product?.featuredImage?.url ||
+        v?.product?.featuredImage?.originalSrc ||
+        null;
+      return {
+        id: node.id,
+        title: node.title,
+        sku: node.sku || v?.sku || null,
+        quantity: node.quantity,
+        variantId: v?.id || null,
+        image: img,
+      };
+    });
+
+    res.json({
+      ok: true,
+      shop: session.shop,
+      order: {
+        id: o.id,
+        name: o.name,
+        createdAt: o.createdAt,
+        status: o.displayFinancialStatus,
+        test: !!o.test,
+        customer: {
+          id: o.customer?.id || null,
+          name: o.customer?.displayName || null,
+          email: o.customer?.email || null,
+          phone: o.customer?.phone || null,
+        },
+        shippingAddress: o.shippingAddress || null,
+        items,
+      },
+    });
+  } catch (e) {
+    res.status(e?.status || 500).json({ ok: false, error: e?.message || String(e) });
+  }
+});
+
 
 // =================== WHATSAPP FLOW ACTIONS API ===================
 // Este endpoint es llamado por nuestro otro servicio (whatsapp-odds)

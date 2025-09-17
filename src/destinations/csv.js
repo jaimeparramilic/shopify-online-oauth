@@ -10,6 +10,8 @@ function toCsvValue(v) {
   return s;
 }
 
+
+
 /**
  * Escribe/append en CSV. Crea carpeta y header si el archivo no existe o está vacío.
  * @param {string} filePath Ruta del CSV

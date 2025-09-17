@@ -9,3 +9,5 @@ console.log(JSON.stringify({
   has_old_secret: Boolean(process.env.SHOPIFY_API_SECRET_OLD),
   scopes: process.env.SHOPIFY_SCOPES,
 }, null, 2));
+
+

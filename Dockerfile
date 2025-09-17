@@ -15,6 +15,7 @@ COPY . .
 ENV NODE_ENV=production
 EXPOSE 8080
 
+
 # 5) Arranque (ruta relativa al WORKDIR)
 CMD ["node", "src/server.js"]
 
