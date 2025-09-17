@@ -1,7 +1,5 @@
 // src/server.js
-if (!process.env.K_SERVICE && process.env.NODE_ENV !== 'production') {
-  try { await import('dotenv/config'); } catch {}
-}
+import 'dotenv/config';
 import express from 'express';
 import cookieParser from 'cookie-parser';
 import crypto from 'crypto';
