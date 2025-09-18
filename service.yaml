@@ -1,0 +1,73 @@
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: shopify-app
+  namespace: '10289619147'
+  labels:
+    cloud.googleapis.com/location: us-central1
+spec:
+  template:
+    metadata:
+      annotations:
+        autoscaling.knative.dev/maxScale: '20'
+        autoscaling.knative.dev/minScale: '1'
+        run.googleapis.com/startup-cpu-boost: 'true'
+    spec:
+      containerConcurrency: 80
+      timeoutSeconds: 600
+      serviceAccountName: 10289619147-compute@developer.gserviceaccount.com
+      containers:
+      - image: us-central1-docker.pkg.dev/bubbly-vine-471620-h1/cloud-run-source-deploy/shopify-app
+        command:
+        - node
+        # --- CORRECCIÓN 1: Usar boot.js para el arranque ---
+        args:
+        - src/boot.js
+        ports:
+        - name: http1
+          containerPort: 8080
+        # --- CORRECCIÓN 2: Añadir la configuración híbrida de variables ---
+        env:
+        # Variables de texto normal (públicas)
+        - name: SHOPIFY_APP_HOST
+          value: "https://shopify-app-10289619147.us-central1.run.app"
+        - name: DEFAULT_SHOP
+          value: "kueh0y-ib.myshopify.com"
+        - name: SHOPIFY_SCOPES
+          value: "read_products,read_orders,read_customers,write_draft_orders"
+        - name: GOOGLE_SHEETS_SPREADSHEET_ID
+          value: "12J28SZy-dTbVo0Z1fSRDUr1zelRm-d13jxIerpCxqcM"
+        # Referencias a Secretos (sensibles)
+        - name: SHOPIFY_API_KEY
+          valueFrom:
+            secretKeyRef:
+              key: latest
+              name: shopify_api_key
+        - name: SHOPIFY_API_SECRET
+          valueFrom:
+            secretKeyRef:
+              key: latest
+              name: shopify_api_secret
+        - name: FLOW_TOKEN
+          valueFrom:
+            secretKeyRef:
+              key: latest
+              name: flow_token
+        - name: INTERNAL_API_KEY
+          valueFrom:
+            secretKeyRef:
+              key: latest
+              name: internal_api_key
+        resources:
+          limits:
+            cpu: 1000m
+            memory: 1Gi
+        startupProbe:
+          timeoutSeconds: 240
+          periodSeconds: 240
+          failureThreshold: 1
+          tcpSocket:
+            port: 8080
+  traffic:
+  - percent: 100
+    latestRevision: true
