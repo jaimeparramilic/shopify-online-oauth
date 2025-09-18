@@ -97,4 +97,35 @@ router.get('/api/test-flow', async (req, res) => {
 });
 
 
+// Añade esto en tu app de Cloud Run (ej. en src/routes/integrations.js)
+
+// ... (otros imports y rutas)
+
+// --- Endpoint para servir datos de órdenes a otras apps internas ---
+router.get('/api/order-data', requireFlowToken, async (req, res) => {
+  try {
+    const shop = String(req.query.shop || process.env.DEFAULT_SHOP || '').trim();
+    const orderName = String(req.query.order_name || '').trim();
+
+    if (!orderName || !shop) {
+      return res.status(400).json({ ok: false, error: 'Faltan parámetros: order_name y shop son requeridos' });
+    }
+
+    // 1. Obtiene la "llave maestra" del servidor para hablar con Shopify
+    const session = await getOfflineSession(shop);
+    
+    // 2. Llama a Shopify para obtener los datos de la orden
+    // (Reutilizamos la función que ya existe en tu código)
+    const orderData = await fetchOrderWithImages(session, { orderName });
+
+    // 3. Devuelve los datos completos en formato JSON
+    res.json({ ok: true, data: orderData });
+
+  } catch (e) {
+    // Manejo de errores
+    console.error('[GET /api/order-data] Error:', e);
+    res.status(e.status || 500).json({ ok: false, error: e?.message || String(e) });
+  }
+});
+
 export default router;
