@@ -1,3 +1,14 @@
+// Carga .env SOLO en desarrollo. En producción usamos Secret Manager.
+if (!process.env.NODE_ENV || process.env.NODE_ENV === "development") {
+  try {
+    await import("dotenv/config");
+    console.log("[init] .env loaded (development)");
+  } catch (e) {
+    console.warn("[init] dotenv not found, skipping (production)");
+  }
+}
+
+
 // src/server.js
 import 'dotenv/config';
 import express from 'express';
