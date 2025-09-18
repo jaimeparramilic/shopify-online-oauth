@@ -13,7 +13,7 @@ FROM base AS deps
 # Solo los manifests para cachear npm ci
 COPY package*.json ./
 # Si usas npm: (si usas pnpm/yarn, cambia aquí)
-RUN npm ci
+RUN npm install --legacy-peer-deps --no-audit --no-fund
 
 # -------------------------------------------------------
 # Etapa build (opcional: TS/build)
