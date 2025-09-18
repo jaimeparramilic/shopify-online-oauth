@@ -1,24 +1,20 @@
 {
-  "name": "shopify-online-oauth",
+  "name": "shopify-app-refactored",
   "version": "1.0.0",
-  "description": "Repo base para OAuth online (per-user) con Shopify + Node.js/Express.",
+  "description": "App de Shopify refactorizada para una mejor organización y mantenibilidad.",
   "main": "src/server.js",
+  "type": "module",
+  "engines": {
+    "node": ">=20.0.0"
+  },
   "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch --env-file=.env src/server.js",
     "test": "echo \"Error: no test specified\" && exit 1",
-    "dev": "nodemon -r dotenv/config src/server.js",
-    "start": "node -r dotenv/config src/server.js",
-    "start:dev": "node --env-file=.env src/server.js",
     "diag:hmac": "node scripts/check-hmac.js",
     "diag:env": "node scripts/print-env.js",
     "diag:exchange": "node scripts/exchange-code.js"
   },
-  "engines": {
-    "node": ">=20.0.0"
-  },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "type": "module",
   "dependencies": {
     "@shopify/shopify-api": "^11.14.1",
     "@shopify/shopify-app-session-storage-memory": "^4.0.20",
@@ -28,8 +24,7 @@
     "express": "^5.1.0",
     "googleapis": "^159.0.0",
     "multer": "^2.0.2",
-    "p-queue": "^8.1.1",
-    "dotenv": "^16.4.5"
+    "p-queue": "^8.1.1"
   },
   "devDependencies": {
     "dotenv": "^17.2.2",

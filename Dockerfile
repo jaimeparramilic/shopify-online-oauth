@@ -1,54 +1,50 @@
 # syntax=docker/dockerfile:1
-# -------------------------------------------------------
-# Etapa base
-# -------------------------------------------------------
-FROM node:20-slim AS base
+
+################################################################################
+# Dockerfile Multi-etapa Optimizado para Producción con Bootloader
+################################################################################
+
+# --- Etapa de Builder ---
+# Aquí instalamos dependencias y preparamos la aplicación.
+FROM node:20-slim AS builder
 ENV NODE_ENV=production
 WORKDIR /app
 
-# -------------------------------------------------------
-# Etapa deps (instala dependencias)
-# -------------------------------------------------------
-FROM base AS deps
-# Solo los manifests para cachear npm ci
+# Copia los archivos de definición de paquetes
 COPY package*.json ./
-# Si usas npm: (si usas pnpm/yarn, cambia aquí)
-RUN npm install --legacy-peer-deps --no-audit --no-fund
 
-# -------------------------------------------------------
-# Etapa build (opcional: TS/build)
-# - Si NO tienes build, esto sigue sin romper
-# -------------------------------------------------------
-FROM deps AS build
+# Instala SOLO las dependencias de producción usando el lockfile.
+# Es más rápido, seguro y reproducible que 'npm install'.
+RUN npm ci
+
+# Copia el resto del código fuente de la aplicación
 COPY . .
-# Si existe un script build (TS/webpack), se ejecuta; si no, continúa
-RUN npm run build || echo "No build step, continuing"
-# Prune para runtime (quita devDependencies)
-RUN npm prune --omit=dev
 
-# -------------------------------------------------------
-# Etapa final (runtime)
-# -------------------------------------------------------
+
+# --- Etapa de Runtime ---
+# Esta es la imagen final, optimizada para ser ligera y segura.
 FROM node:20-slim AS runtime
 ENV NODE_ENV=production \
-    PORT=8080 \
-    HOST=0.0.0.0
+    PORT=8080
+
 WORKDIR /app
 
-# Copiamos todo lo ya resuelto (código + node_modules pruned)
-COPY --from=build /app /app
+# Instala curl para usarlo en el HEALTHCHECK. Es más estándar.
+RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
 
-# Security: corre como usuario no-root
-RUN useradd -m nodeuser && chown -R nodeuser:nodeuser /app
+# Copia la aplicación con las dependencias desde la etapa 'builder'
+COPY --from=builder /app /app
+
+# Crea un usuario no-root para correr la aplicación por seguridad
+RUN useradd --system --uid 1001 --gid 0 nodeuser
 USER nodeuser
 
-# Expone puerto
 EXPOSE 8080
 
-# Healthcheck simple (útil para depurar arranque)
-HEALTHCHECK --interval=30s --timeout=3s --start-period=20s \
-  CMD node -e "require('http').get('http://127.0.0.1:'+process.env.PORT+'/healthz', r=>{if(r.statusCode!==200)process.exit(1)}).on('error',()=>process.exit(1))"
+# HEALTHCHECK mejorado usando curl. Verifica que la ruta /healthz responde con 200 OK.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+  CMD curl -f http://127.0.0.1:${PORT}/healthz || exit 1
 
-# Importante: arrancamos el boot (NO el server directo)
-# El boot abre el puerto y luego importa tu server.
-CMD ["node","src/boot.js"]
+# Comando para arrancar la aplicación.
+# Usamos el bootloader inteligente que se encarga de iniciar el servidor real.
+CMD ["node", "src/boot.js"]
