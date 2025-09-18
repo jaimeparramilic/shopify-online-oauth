@@ -43,29 +43,34 @@ const target = resolveFirstExisting(candidates);
 log("entry candidates:", candidates);
 log("resolved entry:", target);
 
+// --- Bloque de Carga y Diagnóstico ---
 (async () => {
-  if (!target) {
-    err("No se encontró ningún entry de server. Define la variable de entorno ENTRY o corrige la ruta.");
-    return;
-  }
-  try {
-    // 3) Importación dinámica del módulo de la app principal
-    const mod = await import(pathToFileURL(target).href);
-    log("module imported:", Object.keys(mod));
-
-    // 4) Montaje flexible de la app principal (buscará la exportación 'app')
-    if (mod.app && typeof mod.app === "function") {
-      log("mounting exported app");
-      bootApp.use(mod.app);
-    } else if (typeof mod.default === "function") {
-      log("calling default(app)");
-      await mod.default(bootApp);
-    } else {
-      log("Ninguna exportación reconocida (app/default). Ajusta server.js para que exporte la instancia de express.");
+  try { // ENVOLVEMOS TODO EN UN TRY/CATCH GRANDE
+    if (!target) {
+      throw new Error("No se encontró ningún entry point de servidor (ej. src/server.js).");
     }
 
-    log("main app wired ✔");
+    log("Importando el módulo principal desde:", target);
+    const mod = await import(pathToFileURL(target).href);
+    log("Módulo importado con éxito. Exports:", Object.keys(mod));
+
+    if (mod.app && typeof mod.app === "function") {
+      log("Montando la aplicación exportada 'app'.");
+      bootApp.use(mod.app);
+    } else {
+      throw new Error("El módulo del servidor no exporta una instancia 'app' de Express.");
+    }
+
+    log("La aplicación principal se ha conectado correctamente. ✔");
+
   } catch (e) {
-    err("failed to import/wire main app:", e);
+    // ¡ESTA ES LA PARTE IMPORTANTE!
+    // Imprimimos el error completo en la consola de errores
+    // y cerramos el proceso para que Cloud Run lo vea.
+    err("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+    err("!!  ERROR FATAL DURANTE EL ARRANQUE DE LA APP  !!");
+    err("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+    console.error(e);
+    process.exit(1); // Forzamos la salida con un código de error
   }
 })();
