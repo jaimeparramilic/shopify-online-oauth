@@ -67,7 +67,7 @@ app.get('/installed', (req, res) => {
   const { shop } = req.query;
   res.status(200).send(`<h1>✅ App instalada</h1><p>Shop: ${shop || ''}</p><p>Probar: <a href="/api/me">/api/me</a></p>`);
 });
-
+console.log('OFFLINE TOKEN:', session.accessToken);
 // --- Exportación para boot.js ---
 // La línea más importante: permite que boot.js use esta app.
 export { app };
