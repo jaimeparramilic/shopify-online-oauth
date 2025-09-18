@@ -1,0 +1,15 @@
+*** Begin Patch
+*** Update File: src/server.js
+@@
++// Carga .env SOLO en desarrollo. En producción usamos Secret Manager.
++if (!process.env.NODE_ENV || process.env.NODE_ENV === "development") {
++  try {
++    // En ESM podemos usar top-level await para importar dotenv/config
++    await import('dotenv/config');
++    console.log('[init] .env loaded (development)');
++  } catch (e) {
++    console.warn('[init] dotenv not found, skipping (production)');
++  }
++}
++
+*** End Patch
