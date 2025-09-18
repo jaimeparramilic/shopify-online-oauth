@@ -28,7 +28,8 @@
     "express": "^5.1.0",
     "googleapis": "^159.0.0",
     "multer": "^2.0.2",
-    "p-queue": "^8.1.1"
+    "p-queue": "^8.1.1",
+    "dotenv": "^16.4.5"
   },
   "devDependencies": {
     "dotenv": "^17.2.2",
